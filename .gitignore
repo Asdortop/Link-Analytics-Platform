@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Virtual environment
+venv/
+URL_SHORT/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+
+# Database
+*.db
+
+# Docker
+*.env
