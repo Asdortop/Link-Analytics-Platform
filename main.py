@@ -8,6 +8,7 @@ from database import engine, SessionLocal
 from fastapi.responses import RedirectResponse
 from datetime import datetime
 models.Base.metadata.create_all(bind=engine)
+from sqlalchemy import func
 
 app = FastAPI()
 
@@ -47,6 +48,37 @@ def create_short_url(url_request: URLCreate, db: Session = Depends(get_db)):
         "original_url": new_url.original_url,
         "short_url": f"http://127.0.0.1:8000/{new_url.short_code}"
     }
+
+@app.get("/stats/{code}")
+def get_stats(code:str, db: Session = Depends(get_db)):
+    total_clicks = db.query(func.count(models.Click.id))\
+        .filter(models.Click.short_code==code)\
+        .scalar()
+    
+    clicks_per_day = db.query(func.count(models.Click.id),func.date(models.Click.clicked_at))\
+        .filter(models.Click.short_code==code)\
+        .group_by(func.date(models.Click.clicked_at))\
+        .all()
+    
+    device_stats = db.query(
+        models.Click.device,
+        func.count(models.Click.id)
+    ).filter(models.Click.short_code == code)\
+     .group_by(models.Click.device)\
+     .all()
+
+    return {
+    "short_code": code,
+    "total_clicks": total_clicks,
+    "clicks_per_day": [
+        {"date": str(d), "count": c}
+        for d, c in clicks_per_day
+    ],
+    "device_stats": [
+        {"device": d, "count": c}
+        for d, c in device_stats
+    ]
+}
 
 @app.get("/ping")
 def ping_test():
