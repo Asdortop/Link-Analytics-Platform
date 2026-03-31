@@ -9,3 +9,14 @@ class URL(Base):
     short_code = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
     clicks = Column(Integer, default=0)
+
+class Click(Base):
+    __tablename__ = "clicks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    short_code = Column(String, index=True)
+    clicked_at = Column(DateTime, default=datetime.now)
+    country = Column(String)
+    device = Column(String)
+    browser = Column(String)
+    
