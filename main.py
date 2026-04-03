@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
+from requests import request
 from sqlalchemy.orm import Session
 import string
 import random
@@ -9,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from datetime import datetime
 models.Base.metadata.create_all(bind=engine)
 from sqlalchemy import func
+from user_agents import parse
 
 app = FastAPI()
 
@@ -55,47 +57,76 @@ def get_stats(code:str, db: Session = Depends(get_db)):
         .filter(models.Click.short_code==code)\
         .scalar()
     
-    clicks_per_day = db.query(func.count(models.Click.id),func.date(models.Click.clicked_at))\
-        .filter(models.Click.short_code==code)\
-        .group_by(func.date(models.Click.clicked_at))\
-        .all()
+    clicks_per_day = db.query(
+    func.date(models.Click.clicked_at),
+    func.count(models.Click.id)
+    ).filter(models.Click.short_code == code)\
+    .group_by(func.date(models.Click.clicked_at))\
+    .all()
     
     device_stats = db.query(
-        models.Click.device,
+            models.Click.device,
+            func.count(models.Click.id)
+        ).filter(models.Click.short_code == code)\
+        .group_by(models.Click.device)\
+        .all()
+
+    browser_stats = db.query(
+        models.Click.browser,
         func.count(models.Click.id)
     ).filter(models.Click.short_code == code)\
-     .group_by(models.Click.device)\
-     .all()
+    .group_by(models.Click.browser)\
+    .all()
+
+    country_stats = db.query(
+        models.Click.country,
+        func.count(models.Click.id)
+    ).filter(models.Click.short_code==code)\
+    .group_by(models.Click.country)\
+    .all()
 
     return {
-    "short_code": code,
-    "total_clicks": total_clicks,
-    "clicks_per_day": [
-        {"date": str(d), "count": c}
-        for d, c in clicks_per_day
-    ],
-    "device_stats": [
-        {"device": d, "count": c}
-        for d, c in device_stats
-    ]
-}
+        "short_code": code,
+        "total_clicks": total_clicks,
+        "clicks_per_day": [
+            {"date": str(d), "count": c}
+            for d, c in clicks_per_day
+        ],
+        "device_stats": [
+            {"device": d, "count": c}
+            for d, c in device_stats
+        ],
+        "browser_stats": [
+            {"browser": b, "count": c}
+            for b,c in browser_stats
+        ],
+        "country_stats": [
+            {"country": ctry, "count": c}
+            for ctry,c in country_stats
+        ]
+    }
 
 @app.get("/ping")
 def ping_test():
     return {"status": "ok"}
 
 @app.get("/{code}")
-def redirect_url(code: str, db: Session = Depends(get_db)):
+def redirect_url(code: str, request: Request, db: Session = Depends(get_db)):
     url_entry = db.query(models.URL).filter(models.URL.short_code == code).first()
     if not url_entry:
         raise HTTPException(status_code=404, detail="URL Not Found")
     url_entry.clicks += 1
+    user_agent_string = request.headers.get("user-agent")
+    ua = parse(user_agent_string)
+    device = "mobile" if ua.is_mobile else "desktop"
+    browser = ua.browser.family
+    country = "IN"
     click = models.Click(
         short_code=code,
         clicked_at = datetime.now(),
-        country="Unknown",
-        device="Unknown",
-        browser="Unknown"
+        country=country,
+        device=device,
+        browser=browser
     )
     db.add(click)
     db.commit()
