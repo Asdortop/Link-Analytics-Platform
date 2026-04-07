@@ -11,6 +11,9 @@ from datetime import datetime
 models.Base.metadata.create_all(bind=engine)
 from sqlalchemy import func
 from user_agents import parse
+import redis
+
+r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 app = FastAPI()
 
@@ -112,11 +115,17 @@ def ping_test():
 
 @app.get("/{code}")
 def redirect_url(code: str, request: Request, db: Session = Depends(get_db)):
-    url_entry = db.query(models.URL).filter(models.URL.short_code == code).first()
-    if not url_entry:
-        raise HTTPException(status_code=404, detail="URL Not Found")
-    url_entry.clicks += 1
-    user_agent_string = request.headers.get("user-agent")
+    cached_url = r.get(code)
+    if cached_url:
+        og_url = cached_url
+        url_entry = None
+    else:
+        url_entry = db.query(models.URL).filter(models.URL.short_code == code).first()
+        if not url_entry:
+            raise HTTPException(status_code=404, detail="URL Not Found")
+        og_url = url_entry.original_url
+        r.set(code,og_url,ex = 3600)
+    user_agent_string = request.headers.get("user-agent", "")
     ua = parse(user_agent_string)
     device = "mobile" if ua.is_mobile else "desktop"
     browser = ua.browser.family
@@ -129,6 +138,9 @@ def redirect_url(code: str, request: Request, db: Session = Depends(get_db)):
         browser=browser
     )
     db.add(click)
+    if url_entry:
+        url_entry.clicks += 1
     db.commit()
-    db.refresh(url_entry)
-    return RedirectResponse(url=url_entry.original_url)
+    if url_entry:
+        db.refresh(url_entry)
+    return RedirectResponse(url=og_url)
