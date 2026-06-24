@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from datetime import datetime
 models.Base.metadata.create_all(bind=engine)
 from sqlalchemy import func
+# pyrefly: ignore [missing-import]
 from user_agents import parse
 import redis
 
